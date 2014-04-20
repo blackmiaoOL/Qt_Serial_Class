@@ -1,0 +1,8 @@
+This is a linux-version for qt_serial.
+
+
+if you want to use this, You must make sure that you have permission to access  serial port dev.
+
+qextserialport---------------https://code.google.com/p/qextserialport/
+
+:-)
