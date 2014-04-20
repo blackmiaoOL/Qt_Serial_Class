@@ -34,7 +34,6 @@ MQSerial::MQSerial(QWidget *parent) :
     ui->pushButton_2->setEnabled(false);
 
 
-    QString ss="/dev/ttySAC1";
     myCom = new Posix_QextSerialPort("/dev/ttyS0");
 //    myCom = new Win_QextSerialPort("\\\\.\\com11", QextSerialBase::EventDriven);
     connect(myCom,SIGNAL(readyRead()),this,SLOT(readMyCom()));
