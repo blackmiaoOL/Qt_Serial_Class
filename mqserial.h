@@ -551,6 +551,8 @@ class QextSerialPort: public QextBaseType
 #include <QStringListModel>
 #include <QSettings>
 #include "ui_mqserial.h"
+#include "qtimer.h"
+#include "QSettings"
 namespace Ui {
 class MQSerial;
 }
@@ -606,17 +608,26 @@ private slots:
 
     void on_pushButton_clicked();
 
+    void on_checkBox_11_clicked();
+    void baud_timer_INT();
+    void on_comboBox_activated(const QString &arg1);
+
+    void on_comboBox_activated(int index);
+
 private:
+    QSettings *configIniWrite;
+    QTimer *baud_timer;
      Readcom comm;
      Ui::MQSerial *ui;
     int prm_table[4];
     QextSerialEnumerator enumerator;
-     long receivenum;
+     long long receivenum=0;
 
      QString alltext;
-    int sendnum;
+    int sendnum=0;
     QLabel* btm_state;
     bool ishex(char a);
+    void find_and_read(QSettings* set,const char* path,int *value,int default_value);
 signals:
     void com_signal(QByteArray);
 };
