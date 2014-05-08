@@ -23,14 +23,6 @@ MQSerial::MQSerial(QWidget *parent) :
     open_button_state=false;
     receivenum =0;
     sendnum=0;
-
-    prm_table[0]=19;
-    prm_table[1]=3;
-    prm_table[2]=0;
-    prm_table[3]=0;
-
-
-
     ui->pushButton_3->setEnabled(false);
     ui->pushButton_2->setEnabled(false);
 
@@ -42,18 +34,20 @@ MQSerial::MQSerial(QWidget *parent) :
     //向ini文件中写入内容,setValue函数的两个参数是键值对
     //向ini文件的第一个节写入内容,ip节下的第一个参数
 
-//    if(configIniWrite->value("/com_parameter/baud").isNull())
-//    {
-//        configIniWrite->setValue("/com_parameter/baud",19);
-//    }
-//    else
-//    {
-//        prm_table[0]=configIniWrite->value("/com_parameter/baud").toInt();
-//    }
     find_and_read(configIniWrite,"/com_parameter/baud",prm_table,19);
     find_and_read(configIniWrite,"/com_parameter/data",prm_table+1,3);
     find_and_read(configIniWrite,"/com_parameter/stop",prm_table+2,0);
     find_and_read(configIniWrite,"/com_parameter/checkout",prm_table+3,0);
+
+    if(configIniWrite->value("/text/send_text").isNull())
+    {
+        configIniWrite->setValue("/text/send_text",QString(""));
+    }
+    else
+    {
+        ui->lineEdit->setText(configIniWrite->value("/text/send_text").toString());
+    }
+
     ui->comboBox_2->setCurrentIndex(prm_table[0]);
     ui->comboBox_3->setCurrentIndex(prm_table[1]);
     ui->comboBox_4->setCurrentIndex(prm_table[2]);
@@ -82,9 +76,8 @@ void MQSerial::find_and_read(QSettings* set,const char* path,int *value,int defa
     {
         *value=configIniWrite->value(path).toInt();
     }
-
-
 }
+
 void MQSerial::baud_timer_INT()
 {
     static long long receive_pre=0;
@@ -122,6 +115,7 @@ void MQSerial::readMyCom()
         else
             ui->textBrowser->insertPlainText(new_string);
     }
+    ui->textBrowser->moveCursor(QTextCursor::End);
 }
 
 
@@ -287,6 +281,9 @@ void MQSerial::on_lineEdit_textChanged(const QString &arg1)
         ui->pushButton_3->setEnabled(false);
     else
         ui->pushButton_3->setEnabled(true);
+
+    configIniWrite->setValue("/text/send_text",QString(ui->lineEdit->text()));
+
 
 }
 bool MQSerial::ishex(char a)

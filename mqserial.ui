@@ -457,7 +457,14 @@
               <item>
                <widget class="QCheckBox" name="checkBox">
                 <property name="text">
-                 <string>停止更新</string>
+                 <string>Stop update</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkBox_6">
+                <property name="text">
+                 <string>Auto Scroll</string>
                 </property>
                </widget>
               </item>
@@ -530,22 +537,16 @@
                </widget>
               </item>
               <item>
-               <spacer name="verticalSpacer">
+               <widget class="Line" name="line_2">
                 <property name="orientation">
                  <enum>Qt::Vertical</enum>
                 </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>20</width>
-                  <height>40</height>
-                 </size>
-                </property>
-               </spacer>
+               </widget>
               </item>
               <item>
                <widget class="QLabel" name="label_10">
                 <property name="text">
-                 <string>Baud</string>
+                 <string>Receive speed</string>
                 </property>
                </widget>
               </item>
