@@ -38,7 +38,7 @@ MQSerial::MQSerial(QWidget *parent) :
     myCom = new Win_QextSerialPort("\\\\.\\com11", QextSerialBase::EventDriven);
     connect(myCom,SIGNAL(readyRead()),this,SLOT(readMyCom()));
 
-    configIniWrite = new QSettings("hahaya.ini", QSettings::IniFormat);
+    configIniWrite = new QSettings("uart_config.ini", QSettings::IniFormat);
     //向ini文件中写入内容,setValue函数的两个参数是键值对
     //向ini文件的第一个节写入内容,ip节下的第一个参数
 
@@ -134,16 +134,17 @@ void MQSerial::on_pushButton_4_clicked()
         {
             myCom->close();/*may occur "WaitCommEvent error 22".
  I don't know how to solve.*/
-            ui->pushButton_4->setText("Open");
-            ui->pushButton_3->setEnabled(false);
-            ui->pushButton_2->setEnabled(false);
-            ui->pushButton_8->setEnabled(false);
-            open_button_state=!open_button_state;
         }
+        ui->pushButton_4->setText("Open");
+        ui->pushButton_3->setEnabled(true);
+        ui->pushButton_2->setEnabled(true);
+        ui->pushButton_8->setEnabled(true);
+        open_button_state=!open_button_state;
+
     }
     else
     {
-        ui->pushButton_8->setEnabled(true);
+
         QString ss="\\\\.\\com";
         QString zhongjian=ui->comboBox->currentText();
         ss.append(zhongjian[3]);
@@ -154,9 +155,10 @@ void MQSerial::on_pushButton_4_clicked()
         myCom->setPortName(ss);
         if(myCom ->open(QIODevice::ReadWrite))
         {
+            ui->pushButton_8->setEnabled(false);
             ui->pushButton_4->setText("Close");
-            ui->pushButton_3->setEnabled(true);
-            ui->pushButton_2->setEnabled(true);
+            ui->pushButton_3->setEnabled(false);
+            ui->pushButton_2->setEnabled(false);
             myCom->setBaudRate((BaudRateType)prm_table[0]);
             myCom->setDataBits((DataBitsType)prm_table[1]);
             myCom->setParity((ParityType)prm_table[2]);
@@ -455,7 +457,17 @@ void MQSerial::on_pushButton_clicked()
 }
 
 
+void MQSerial::on_comboBox_activated(int index)
+{
+    if(open_button_state)
+    {
+        on_pushButton_4_clicked();
+        on_pushButton_4_clicked();
+    }
 
+
+
+}
 
 
 
@@ -2278,12 +2290,3 @@ void MQSerial::on_checkBox_11_clicked()
 
 
 
-void MQSerial::on_comboBox_activated(const QString &arg1)
-{
-
-}
-
-void MQSerial::on_comboBox_activated(int index)
-{
-
-}

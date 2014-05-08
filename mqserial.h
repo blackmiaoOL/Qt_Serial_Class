@@ -610,7 +610,7 @@ private slots:
 
     void on_checkBox_11_clicked();
     void baud_timer_INT();
-    void on_comboBox_activated(const QString &arg1);
+
 
     void on_comboBox_activated(int index);
 
