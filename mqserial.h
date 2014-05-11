@@ -614,6 +614,8 @@ private slots:
 
     void on_comboBox_activated(int index);
 
+    void on_lineEdit_cursorPositionChanged(int arg1, int arg2);
+
 private:
     QSettings *configIniWrite;
     QTimer *baud_timer;

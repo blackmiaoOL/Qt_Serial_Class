@@ -82,7 +82,13 @@ void MQSerial::baud_timer_INT()
 {
     static long long receive_pre=0;
     long long num_delta=receivenum-receive_pre;
-    ui->lineEdit_5->setText(QString("%1M").arg(num_delta/1000000.0));
+    if(num_delta>100000)
+        ui->lineEdit_5->setText(QString("%1MB/s").arg(num_delta/1000000.0));
+    else if(num_delta>100)
+        ui->lineEdit_5->setText(QString("%1KB/s").arg(num_delta/1000.0));
+    else
+        ui->lineEdit_5->setText(QString("%1B/s").arg(num_delta));
+
     receive_pre=receivenum;
     baud_timer->start(1000);
 }
@@ -130,8 +136,8 @@ void MQSerial::on_pushButton_4_clicked()
  I don't know how to solve.*/
         }
         ui->pushButton_4->setText("Open");
-        ui->pushButton_3->setEnabled(true);
-        ui->pushButton_2->setEnabled(true);
+        ui->pushButton_3->setEnabled(false);
+        ui->pushButton_2->setEnabled(false);
         ui->pushButton_8->setEnabled(true);
         open_button_state=!open_button_state;
 
@@ -151,8 +157,8 @@ void MQSerial::on_pushButton_4_clicked()
         {
             ui->pushButton_8->setEnabled(false);
             ui->pushButton_4->setText("Close");
-            ui->pushButton_3->setEnabled(false);
-            ui->pushButton_2->setEnabled(false);
+            ui->pushButton_3->setEnabled(true);
+            ui->pushButton_2->setEnabled(true);
             myCom->setBaudRate((BaudRateType)prm_table[0]);
             myCom->setDataBits((DataBitsType)prm_table[1]);
             myCom->setParity((ParityType)prm_table[2]);
@@ -279,7 +285,7 @@ void MQSerial::on_lineEdit_textChanged(const QString &arg1)
     QString aa=arg1;
     if(ui->lineEdit->text().size()==0)
         ui->pushButton_3->setEnabled(false);
-    else
+    else if(open_button_state)
         ui->pushButton_3->setEnabled(true);
 
     configIniWrite->setValue("/text/send_text",QString(ui->lineEdit->text()));
@@ -2287,3 +2293,8 @@ void MQSerial::on_checkBox_11_clicked()
 
 
 
+
+void MQSerial::on_lineEdit_cursorPositionChanged(int arg1, int arg2)
+{
+
+}
