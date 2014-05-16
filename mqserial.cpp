@@ -109,11 +109,12 @@ void MQSerial::readMyCom()
     if(!ui->checkBox->isChecked())
     {
         //alltext.append(temp);
-        int sizesize=new_string.size();
+
         if(ui->checkBox_2->isChecked()||ui->checkBox_11->isChecked())
         {
+            int sizesize=new_string.size();
             QString hex_string=new_string.toHex();
-            for(long i=0;i<sizesize;i++)
+            for(long i=1;i<sizesize;i++)
                 hex_string.insert(3*i," ");
             ui->textBrowser->insertPlainText(hex_string);
         }
@@ -121,6 +122,7 @@ void MQSerial::readMyCom()
         else
             ui->textBrowser->insertPlainText(new_string);
     }
+    if(ui->checkBox_6->isChecked())
     ui->textBrowser->moveCursor(QTextCursor::End);
 }
 
@@ -302,7 +304,7 @@ bool MQSerial::ishex(char a)
 void MQSerial::on_pushButton_8_clicked()
 {
     ui->comboBox->clear();
-    for(int i=0;comm.getcomm(i,"value")!="nokey";i++)
+    for(int i=0;comm.getcomm(i,"value")!="nokey"&&comm.getcomm(i,"value")!="Cannot open regedit!";i++)
     {
         ui->comboBox->addItem(comm.getcomm(i,"value"));
     }
@@ -462,6 +464,7 @@ void MQSerial::on_pushButton_clicked()
 
 void MQSerial::on_comboBox_activated(int index)
 {
+    qDebug()<<"ss";
     if(open_button_state)
     {
         on_pushButton_4_clicked();
@@ -2294,7 +2297,7 @@ void MQSerial::on_checkBox_11_clicked()
 
 
 
-void MQSerial::on_lineEdit_cursorPositionChanged(int arg1, int arg2)
+void MQSerial::on_comboBox_activated(const QString &arg1)
 {
 
 }
