@@ -2297,7 +2297,7 @@ void MQSerial::on_checkBox_11_clicked()
 
 
 
-void MQSerial::on_comboBox_activated(const QString &arg1)
-{
+//void MQSerial::on_comboBox_activated(const QString &arg1)
+//{
 
-}
+//}

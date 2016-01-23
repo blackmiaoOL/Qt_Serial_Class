@@ -10,7 +10,7 @@
 #include <fstream>
 #include <stdlib.h>
 #include "winbase.h"
-#include "QPlainTextEdit"
+#include "QTextBrowser"
 
 bool ishex(char);
 MQSerial::MQSerial(QWidget *parent) :
@@ -23,12 +23,6 @@ MQSerial::MQSerial(QWidget *parent) :
     open_button_state=false;
     receivenum =0;
     sendnum=0;
-
-    prm_table[0]=19;
-    prm_table[1]=3;
-    prm_table[2]=0;
-    prm_table[3]=0;
-
     ui->pushButton_3->setEnabled(false);
     ui->pushButton_2->setEnabled(false);
 
@@ -36,24 +30,68 @@ MQSerial::MQSerial(QWidget *parent) :
     myCom = new Win_QextSerialPort("\\\\.\\com11", QextSerialBase::EventDriven);
     connect(myCom,SIGNAL(readyRead()),this,SLOT(readMyCom()));
 
-// to read default settings
-//    QString path="HKEY_LOCAL_MACHINE\\HARDWARE\\DEVICEMAP\\SERIALCOMM";
-//    QSettings *settings=new QSettings(path,QSettings::NativeFormat);
-//    QStringList key=settings->allKeys();
+    configIniWrite = new QSettings("uart_config.ini", QSettings::IniFormat);
+    //向ini文件中写入内容,setValue函数的两个参数是键值对
+    //向ini文件的第一个节写入内容,ip节下的第一个参数
 
+    find_and_read(configIniWrite,"/com_parameter/baud",prm_table,19);
+    find_and_read(configIniWrite,"/com_parameter/data",prm_table+1,3);
+    find_and_read(configIniWrite,"/com_parameter/stop",prm_table+2,0);
+    find_and_read(configIniWrite,"/com_parameter/checkout",prm_table+3,0);
+
+    if(configIniWrite->value("/text/send_text").isNull())
+    {
+        configIniWrite->setValue("/text/send_text",QString(""));
+    }
+    else
+    {
+        ui->lineEdit->setText(configIniWrite->value("/text/send_text").toString());
+    }
+
+    ui->comboBox_2->setCurrentIndex(prm_table[0]);
+    ui->comboBox_3->setCurrentIndex(prm_table[1]);
+    ui->comboBox_4->setCurrentIndex(prm_table[2]);
+    ui->comboBox_5->setCurrentIndex(prm_table[3]);
 
 
     for(int i=0;comm.getcomm(i,"value")!="nokey"&&comm.getcomm(i,"value")!="Cannot open regedit!";i++)
     {
-      ui->comboBox->addItem(comm.getcomm(i,"value"));
+        ui->comboBox->addItem(comm.getcomm(i,"value"));
     }
 
     this->statusBar()->hide();
 
     //this->com_handle=&readMyCom;
-
+    baud_timer=new QTimer(this);
+    connect( baud_timer, SIGNAL(timeout()), this, SLOT(baud_timer_INT()) );
+    baud_timer->start(1000);
+}
+void MQSerial::find_and_read(QSettings* set,const char* path,int *value,int default_value)
+{
+    if(set->value(path).isNull())
+    {
+        configIniWrite->setValue(path,default_value);
+    }
+    else
+    {
+        *value=configIniWrite->value(path).toInt();
+    }
 }
 
+void MQSerial::baud_timer_INT()
+{
+    static long long receive_pre=0;
+    long long num_delta=receivenum-receive_pre;
+    if(num_delta>100000)
+        ui->lineEdit_5->setText(QString("%1MB/s").arg(num_delta/1000000.0));
+    else if(num_delta>100)
+        ui->lineEdit_5->setText(QString("%1KB/s").arg(num_delta/1000.0));
+    else
+        ui->lineEdit_5->setText(QString("%1B/s").arg(num_delta));
+
+    receive_pre=receivenum;
+    baud_timer->start(1000);
+}
 MQSerial::~MQSerial()
 {
     delete ui;
@@ -62,31 +100,30 @@ void MQSerial::readMyCom()
 
 {
 
-    QByteArray temp = myCom->readAll();
-    emit(com_signal(temp));
-    receivenum+=temp.size();
-
-    QString delta2;
-    delta2=QString("%1").arg(receivenum);
-    ui->lineEdit_3->setText(delta2);
+    QByteArray new_string = myCom->readAll();
+    //emit(com_signal(new_string));
+    receivenum+=new_string.size();
+    ui->lineEdit_3->setText(QString::number(receivenum));
 
 
     if(!ui->checkBox->isChecked())
     {
-        alltext.append(temp);
-        int sizesize=temp.size();
-        QString ss=temp.toHex();
-        for(long i=0;i<sizesize;i++)
-            ss.insert(3*i," ");
+        //alltext.append(temp);
 
+        if(ui->checkBox_2->isChecked()||ui->checkBox_11->isChecked())
+        {
+            int sizesize=new_string.size();
+            QString hex_string=new_string.toHex();
+            for(long i=1;i<sizesize;i++)
+                hex_string.insert(3*i," ");
+            ui->textBrowser->insertPlainText(hex_string);
+        }
 
-        if(ui->checkBox_2->isChecked())
-            ui->plainTextEdit->insertPlainText(ss);
         else
-            ui->plainTextEdit->insertPlainText(temp);
-
-       ui->plainTextEdit->moveCursor(QTextCursor::End);
+            ui->textBrowser->insertPlainText(new_string);
     }
+    if(ui->checkBox_6->isChecked())
+    ui->textBrowser->moveCursor(QTextCursor::End);
 }
 
 
@@ -99,26 +136,28 @@ void MQSerial::on_pushButton_4_clicked()
         {
             myCom->close();/*may occur "WaitCommEvent error 22".
  I don't know how to solve.*/
-            ui->pushButton_4->setText("Open");
-            ui->pushButton_3->setEnabled(false);
-            ui->pushButton_2->setEnabled(false);
-            ui->pushButton_8->setEnabled(false);
-            open_button_state=!open_button_state;
         }
+        ui->pushButton_4->setText("Open");
+        ui->pushButton_3->setEnabled(false);
+        ui->pushButton_2->setEnabled(false);
+        ui->pushButton_8->setEnabled(true);
+        open_button_state=!open_button_state;
+
     }
     else
     {
-        ui->pushButton_8->setEnabled(true);
+
         QString ss="\\\\.\\com";
         QString zhongjian=ui->comboBox->currentText();
         ss.append(zhongjian[3]);
         if(zhongjian.length()>4)
-        ss.append(zhongjian[4]);
+            ss.append(zhongjian[4]);
         if(zhongjian.length()>5)
-        ss.append(zhongjian[5]);
+            ss.append(zhongjian[5]);
         myCom->setPortName(ss);
         if(myCom ->open(QIODevice::ReadWrite))
         {
+            ui->pushButton_8->setEnabled(false);
             ui->pushButton_4->setText("Close");
             ui->pushButton_3->setEnabled(true);
             ui->pushButton_2->setEnabled(true);
@@ -126,7 +165,7 @@ void MQSerial::on_pushButton_4_clicked()
             myCom->setDataBits((DataBitsType)prm_table[1]);
             myCom->setParity((ParityType)prm_table[2]);
             myCom->setStopBits((StopBitsType)prm_table[3]);
-             open_button_state=!open_button_state;
+            open_button_state=!open_button_state;
         }
 
 
@@ -139,7 +178,7 @@ void MQSerial::on_pushButton_3_clicked()
     {
         if(ui->checkBox_10->isChecked())
         {
-            myCom->write(ui->lineEdit->text().toLatin1().append("\n"));
+            myCom->write(ui->lineEdit->text().toLatin1().append("\r\n"));
             sendnum+=ui->lineEdit->text().toLatin1().size()+1;
         }
         else
@@ -164,22 +203,22 @@ void MQSerial::on_pushButton_3_clicked()
 
                 char a[3];
                 if(ishex(fasonghex[indexjishu]))
-                a[0]=fasonghex[indexjishu];
+                    a[0]=fasonghex[indexjishu];
                 else
                 {
                     QString aa=tr("ŐâĘÇHEXˇ˘ËÍĹśÇ×ŁŹÄúĘäČë´íż� ");
 
 
-                break;
+                    break;
                 }
                 if(ishex(fasonghex[indexjishu+1]))
-                a[1]=fasonghex[indexjishu+1];
+                    a[1]=fasonghex[indexjishu+1];
                 else
                 {
                     QString aa=tr("ŐâĘÇHEXˇ˘ËÍĹśÇ×ŁŹÄúĘäČë´íż� ");
                     //cuowutishi->ui->label->setText(aa);
                     //cuowutishi->show();
-                break;
+                    break;
                 }
                 a[2]='\0';
                 QByteArray text = QByteArray::fromHex(a);
@@ -187,9 +226,9 @@ void MQSerial::on_pushButton_3_clicked()
 
 
                 if(fasonghex[indexjishu+2]==' ')
-                indexjishu+=3;
+                    indexjishu+=3;
                 else
-                indexjishu+=2;
+                    indexjishu+=2;
 
 
             }
@@ -206,9 +245,7 @@ void MQSerial::on_pushButton_3_clicked()
         }
 
     }
-    QString delta3;
-    delta3=QString("%1").arg(sendnum);
-    ui->lineEdit_3->setText(delta3);
+    ui->lineEdit_2->setText(QString::number(sendnum));
 
 }
 
@@ -216,29 +253,33 @@ void MQSerial::on_comboBox_2_activated(int a)
 {
     myCom->setBaudRate((BaudRateType)a);
     prm_table[0]=a;
+    configIniWrite->setValue("/com_parameter/baud",a);
 }
 
-void MQSerial::on_comboBox_3_activated(int index)
+void MQSerial::on_comboBox_3_activated(int a)
 {
-    myCom->setDataBits((DataBitsType)index);
-    prm_table[1]=index;
+    myCom->setDataBits((DataBitsType)a);
+    prm_table[1]=a;
+    configIniWrite->setValue("/com_parameter/data",a);
 }
 
-void MQSerial::on_comboBox_5_activated(int index)
+void MQSerial::on_comboBox_5_activated(int a)
 {
-    myCom->setParity((ParityType)index);
-    prm_table[2]=index;
+    myCom->setParity((ParityType)a);
+    prm_table[2]=a;
+    configIniWrite->setValue("/com_parameter/checkout",a);
 }
 
-void MQSerial::on_comboBox_4_activated(int index)
+void MQSerial::on_comboBox_4_activated(int a)
 {
-    myCom->setStopBits((StopBitsType)index );
-    prm_table[3]=index;
+    myCom->setStopBits((StopBitsType)a );
+    prm_table[3]=a;
+    configIniWrite->setValue("/com_parameter/stop",a);
 }
 
 void MQSerial::on_lineEdit_editingFinished()
 {
-   // myCom->write(ui->lineEdit->text().toAscii());
+    // myCom->write(ui->lineEdit->text().toAscii());
 }
 
 void MQSerial::on_lineEdit_textChanged(const QString &arg1)
@@ -246,8 +287,11 @@ void MQSerial::on_lineEdit_textChanged(const QString &arg1)
     QString aa=arg1;
     if(ui->lineEdit->text().size()==0)
         ui->pushButton_3->setEnabled(false);
-    else
+    else if(open_button_state)
         ui->pushButton_3->setEnabled(true);
+
+    configIniWrite->setValue("/text/send_text",QString(ui->lineEdit->text()));
+
 
 }
 bool MQSerial::ishex(char a)
@@ -260,21 +304,21 @@ bool MQSerial::ishex(char a)
 void MQSerial::on_pushButton_8_clicked()
 {
     ui->comboBox->clear();
-    for(int i=0;comm.getcomm(i,"value")!="nokey";i++)
+    for(int i=0;comm.getcomm(i,"value")!="nokey"&&comm.getcomm(i,"value")!="Cannot open regedit!";i++)
     {
-      ui->comboBox->addItem(comm.getcomm(i,"value"));
+        ui->comboBox->addItem(comm.getcomm(i,"value"));
     }
 
 }
 
 void MQSerial::on_pushButton_6_clicked()
 {
-    ui->plainTextEdit->moveCursor(QTextCursor::Start);
+    ui->textBrowser->moveCursor(QTextCursor::Start);
 }
 
 void MQSerial::on_pushButton_5_clicked()
 {
-    ui->plainTextEdit->clear();
+    ui->textBrowser->clear();
     alltext.clear();
     receivenum=0;
     sendnum=0;
@@ -282,16 +326,16 @@ void MQSerial::on_pushButton_5_clicked()
 
 void MQSerial::on_checkBox_2_stateChanged(int arg1)
 {
-        //ŃĄÖĐÎŞ2
-    ui->plainTextEdit->clear();
+    //ŃĄÖĐÎŞ2
+    ui->textBrowser->clear();
     int textsize=alltext.toLatin1().size();
     QString zhongjie=alltext.toLatin1().toHex();
     for(long i=0;i<textsize;i++)
         zhongjie.insert(3*i," ");
     if(arg1==2)
-    ui->plainTextEdit->appendPlainText(zhongjie);
+        ui->textBrowser->insertPlainText(zhongjie);
     else
-        ui->plainTextEdit->appendPlainText(alltext);
+        ui->textBrowser->insertPlainText(alltext);
     this->isAnimated();
 }
 
@@ -300,125 +344,136 @@ void MQSerial::on_checkBox_2_stateChanged(int arg1)
 void MQSerial::on_pushButton_2_clicked()
 {
     QString path = QFileDialog::getOpenFileName(this, tr(""), ".", tr("all Files(*.*)"));
-          if(path.length() == 0) {
-                  QMessageBox::information(NULL, tr(""), tr(""));
-          } else {
-                  QMessageBox::information(NULL, tr(""), tr("~") + path);
-          }
-          QFile aa(path);
-          if( aa.open(QIODevice::ReadOnly))
-          {
-         //   QTextStream textStream(&aa);
-           // while(!textStream.atEnd())
-           // {
-             ui->plainTextEdit->appendPlainText(aa.readAll().toHex());
-             if(!ui->checkBox_3->isChecked())
-             {
-                 QByteArray fasonghex=aa.readAll();
+    if(path.length() == 0) {
+        QMessageBox::information(NULL, tr(""), tr(""));
+    } else {
+        QMessageBox::information(NULL, tr(""), tr("~") + path);
+    }
+    QFile aa(path);
+    if( aa.open(QIODevice::ReadOnly))
+    {
+        //   QTextStream textStream(&aa);
+        // while(!textStream.atEnd())
+        // {
+        ui->textBrowser->insertPlainText(aa.readAll().toHex());
+        if(!ui->checkBox_3->isChecked())
+        {
+            QByteArray fasonghex=aa.readAll();
 
-                 if(ui->checkBox_10->isChecked())
-                 {
-                     myCom->write(aa.readAll().append("\n"));
+            if(ui->checkBox_10->isChecked())
+            {
+                myCom->write(aa.readAll().append("\n"));
 
-                 }
-                 else
-                 {
-                     myCom->write(aa.readAll());
+            }
+            else
+            {
+                myCom->write(aa.readAll());
 
-                 }
-             }
-             else
-             {
-                 QByteArray fasonghex=aa.read(1000000000);
+            }
+        }
+        else
+        {
+            QByteArray fasonghex=aa.read(1000000000);
 
-                 QString fasongzhi;
-                 int indexjishu=0;
-                 QString fasongxinxi;
-                 while(1)
-                 {
-
-
-                     if(indexjishu+1>=fasonghex.size())
-                         break;
-                     {
-
-                         char a[3];
-                         if(ishex(fasonghex[indexjishu]))
-                         a[0]=fasonghex[indexjishu];
-                         else
-                         {
-                             QString aa=tr(" ");
-                             //cuowutishi->ui->label->setText(aa);
-                             //cuowutishi->show();
-
-                         break;
-                         }
-                         if(ishex(fasonghex[indexjishu+1]))
-                         a[1]=fasonghex[indexjishu+1];
-                         else
-                         {
-                             QString aa=tr(" ");
-                             //cuowutishi->ui->label->setText(aa);
-                             //cuowutishi->show();
-                         break;
-                         }
-                         a[2]='\0';
-                         QByteArray text = QByteArray::fromHex(a);
-                         fasongxinxi.append(text.data());
+            QString fasongzhi;
+            int indexjishu=0;
+            QString fasongxinxi;
+            while(1)
+            {
 
 
-                         if(fasonghex[indexjishu+2]==' ')
-                         indexjishu+=3;
-                         else
-                         indexjishu+=2;
+                if(indexjishu+1>=fasonghex.size())
+                    break;
+                {
+
+                    char a[3];
+                    if(ishex(fasonghex[indexjishu]))
+                        a[0]=fasonghex[indexjishu];
+                    else
+                    {
+                        QString aa=tr(" ");
+                        //cuowutishi->ui->label->setText(aa);
+                        //cuowutishi->show();
+
+                        break;
+                    }
+                    if(ishex(fasonghex[indexjishu+1]))
+                        a[1]=fasonghex[indexjishu+1];
+                    else
+                    {
+                        QString aa=tr(" ");
+                        //cuowutishi->ui->label->setText(aa);
+                        //cuowutishi->show();
+                        break;
+                    }
+                    a[2]='\0';
+                    QByteArray text = QByteArray::fromHex(a);
+                    fasongxinxi.append(text.data());
 
 
-                     }
-                 }
-                 if(ui->checkBox_10->isChecked())
-                 {
-                     myCom->write(fasongxinxi.insert(0,"\n").toLatin1());
+                    if(fasonghex[indexjishu+2]==' ')
+                        indexjishu+=3;
+                    else
+                        indexjishu+=2;
 
-                 }
-                 else
-                 {
-                     myCom->write(fasongxinxi.toLatin1());
 
-                 }
+                }
+            }
+            if(ui->checkBox_10->isChecked())
+            {
+                myCom->write(fasongxinxi.insert(0,"\n").toLatin1());
 
-             }
+            }
+            else
+            {
+                myCom->write(fasongxinxi.toLatin1());
 
-           // }
+            }
 
-          }
-        QString delta;
-        sendnum+=ui->plainTextEdit->textCursor().position()/2;
-        delta=QString("%1").arg(sendnum);
-        ui->lineEdit_2->setText(delta);
+        }
 
-          aa.close();
+        // }
+
+    }
+    QString delta;
+    sendnum+=ui->textBrowser->textCursor().position()/2;
+    delta=QString("%1").arg(sendnum);
+    ui->lineEdit_2->setText(delta);
+
+    aa.close();
 
 }
 
 void MQSerial::on_pushButton_clicked()
 {
     QString path = QFileDialog::getSaveFileName(this, tr(""), ".", tr("all Files(*.*)"));
-          if(path.length() == 0) {
-                  QMessageBox::information(NULL, tr(""), tr(""));
-          } else {
-                  QMessageBox::information(NULL, tr(""), tr("~") + path);
-          }
-          QFile bb(path);
-          if(bb.open(QIODevice::WriteOnly))
-          {
-            bb.write(ui->plainTextEdit->toPlainText().toLatin1());
-          }
-          bb.close();
+    if(path.length() == 0) {
+        QMessageBox::information(NULL, tr(""), tr(""));
+    } else {
+        QMessageBox::information(NULL, tr(""), tr("~") + path);
+    }
+    QFile bb(path);
+    if(bb.open(QIODevice::WriteOnly))
+    {
+        bb.write(ui->textBrowser->toPlainText().toLatin1());
+    }
+    bb.close();
 
 }
 
 
+void MQSerial::on_comboBox_activated(int index)
+{
+    qDebug()<<"ss";
+    if(open_button_state)
+    {
+        on_pushButton_4_clicked();
+        on_pushButton_4_clicked();
+    }
 
+
+
+}
 
 
 
@@ -491,7 +546,7 @@ The object will be associated with the first port in the system, e.g. COM1 on Wi
 See the other constructors if you need to use a port other than the first.
 */
 QextSerialPort::QextSerialPort()
- : QextBaseType()
+    : QextBaseType()
 {}
 
 /*!
@@ -502,7 +557,7 @@ e.g."COM1" or "/dev/ttyS0".
 \see setQueryMode().
 */
 QextSerialPort::QextSerialPort(const QString & name, QueryMode mode)
- : QextBaseType(name, mode)
+    : QextBaseType(name, mode)
 {
 }
 
@@ -512,7 +567,7 @@ Constructs a port with default name and settings specified by the settings param
 \see setQueryMode().
 */
 QextSerialPort::QextSerialPort(PortSettings const& settings, QueryMode mode)
- : QextBaseType(settings, mode)
+    : QextBaseType(settings, mode)
 {}
 
 /*!
@@ -521,7 +576,7 @@ Constructs a port with the name and settings specified.
 \see setQueryMode().
 */
 QextSerialPort::QextSerialPort(const QString & name, PortSettings const& settings, QueryMode mode)
- : QextBaseType(name, settings, mode)
+    : QextBaseType(name, settings, mode)
 {}
 
 /*!
@@ -530,7 +585,7 @@ Copy constructor.
 \deprecated
 */
 QextSerialPort::QextSerialPort(const QextSerialPort& s)
- : QextBaseType(s)
+    : QextBaseType(s)
 {}
 
 /*!
@@ -621,20 +676,20 @@ QString Readcom::getcomm(int index,QString keyorvalue)
         {
             if(keyvalue[j]!=0x00)
             { valuemessage.append(keyvalue[j]);}
-            }//for(int j=0;j<valuesize;j++) ¶ÁÈ¡¼üÖµ
+        }//for(int j=0;j<valuesize;j++) ¶ÁÈ¡¼üÖµ
         if(keyorvalue=="key")
         {
-          commresult=keymessage;
+            commresult=keymessage;
         }
         if(keyorvalue=="value")
         {
-         commresult=valuemessage;
+            commresult=valuemessage;
         }
 
     }
     else
     {
-     commresult="nokey";
+        commresult="nokey";
     } //if(::RegEnumValue(hKey,indexnum,keyname,&keysize,0,&type,(BYTE*)keyvalue,&valuesize)==0) ÁÐ¾Ù¼üÃûºÍÖµ
 
     return commresult;
@@ -690,117 +745,117 @@ QString Readcom::getcomm(int index,QString keyorvalue)
 
 
 #ifdef _TTY_WIN_
-    //this is serial port GUID
-    #ifndef GUID_CLASS_COMPORT
-        DEFINE_GUID(GUID_CLASS_COMPORT, 0x86e0d1e0L, 0x8089, 0x11d0, 0x9c, 0xe4, 0x08, 0x00, 0x3e, 0x30, 0x1f, 0x73);
-    #endif
+//this is serial port GUID
+#ifndef GUID_CLASS_COMPORT
+DEFINE_GUID(GUID_CLASS_COMPORT, 0x86e0d1e0L, 0x8089, 0x11d0, 0x9c, 0xe4, 0x08, 0x00, 0x3e, 0x30, 0x1f, 0x73);
+#endif
 
-    /* Gordon Schumacher's macros for TCHAR -> QString conversions and vice versa */
-    #ifdef UNICODE
-        #define QStringToTCHAR(x)     (wchar_t*) x.utf16()
-        #define PQStringToTCHAR(x)    (wchar_t*) x->utf16()
-        #define TCHARToQString(x)     QString::fromUtf16((ushort*)(x))
-        #define TCHARToQStringN(x,y)  QString::fromUtf16((ushort*)(x),(y))
-    #else
-        #define QStringToTCHAR(x)     x.local8Bit().constData()
-        #define PQStringToTCHAR(x)    x->local8Bit().constData()
-        #define TCHARToQString(x)     QString::fromLocal8Bit((x))
-        #define TCHARToQStringN(x,y)  QString::fromLocal8Bit((x),(y))
-    #endif /*UNICODE*/
+/* Gordon Schumacher's macros for TCHAR -> QString conversions and vice versa */
+#ifdef UNICODE
+#define QStringToTCHAR(x)     (wchar_t*) x.utf16()
+#define PQStringToTCHAR(x)    (wchar_t*) x->utf16()
+#define TCHARToQString(x)     QString::fromUtf16((ushort*)(x))
+#define TCHARToQStringN(x,y)  QString::fromUtf16((ushort*)(x),(y))
+#else
+#define QStringToTCHAR(x)     x.local8Bit().constData()
+#define PQStringToTCHAR(x)    x->local8Bit().constData()
+#define TCHARToQString(x)     QString::fromLocal8Bit((x))
+#define TCHARToQStringN(x,y)  QString::fromLocal8Bit((x),(y))
+#endif /*UNICODE*/
 
 
-    //static
-    QString QextSerialEnumerator::getRegKeyValue(HKEY key, LPCTSTR property)
-    {
-        DWORD size = 0;
-        RegQueryValueEx(key, property, NULL, NULL, NULL, & size);
-        BYTE * buff = new BYTE[size];
-        if (RegQueryValueEx(key, property, NULL, NULL, buff, & size) == ERROR_SUCCESS) {
-            return TCHARToQStringN(buff, size);
-            delete [] buff;
-        } else {
-            qWarning("QextSerialEnumerator::getRegKeyValue: can not obtain value from registry");
-            delete [] buff;
-            return QString();
-        }
-    }
-
-    //static
-    QString QextSerialEnumerator::getDeviceProperty(HDEVINFO devInfo, PSP_DEVINFO_DATA devData, DWORD property)
-    {
-        DWORD buffSize = 0;
-        SetupDiGetDeviceRegistryProperty(devInfo, devData, property, NULL, NULL, 0, & buffSize);
-        BYTE * buff = new BYTE[buffSize];
-        if (!SetupDiGetDeviceRegistryProperty(devInfo, devData, property, NULL, buff, buffSize, NULL))
-            qCritical("Can not obtain property: %ld from registry", property);
-        QString result = TCHARToQString(buff);
+//static
+QString QextSerialEnumerator::getRegKeyValue(HKEY key, LPCTSTR property)
+{
+    DWORD size = 0;
+    RegQueryValueEx(key, property, NULL, NULL, NULL, & size);
+    BYTE * buff = new BYTE[size];
+    if (RegQueryValueEx(key, property, NULL, NULL, buff, & size) == ERROR_SUCCESS) {
+        return TCHARToQStringN(buff, size);
         delete [] buff;
-        return result;
+    } else {
+        qWarning("QextSerialEnumerator::getRegKeyValue: can not obtain value from registry");
+        delete [] buff;
+        return QString();
+    }
+}
+
+//static
+QString QextSerialEnumerator::getDeviceProperty(HDEVINFO devInfo, PSP_DEVINFO_DATA devData, DWORD property)
+{
+    DWORD buffSize = 0;
+    SetupDiGetDeviceRegistryProperty(devInfo, devData, property, NULL, NULL, 0, & buffSize);
+    BYTE * buff = new BYTE[buffSize];
+    if (!SetupDiGetDeviceRegistryProperty(devInfo, devData, property, NULL, buff, buffSize, NULL))
+        qCritical("Can not obtain property: %ld from registry", property);
+    QString result = TCHARToQString(buff);
+    delete [] buff;
+    return result;
+}
+
+//static
+void QextSerialEnumerator::setupAPIScan(QList<QextPortInfo> & infoList)
+{
+    HDEVINFO devInfo = INVALID_HANDLE_VALUE;
+    GUID * guidDev = (GUID *) & GUID_CLASS_COMPORT;
+
+    devInfo = SetupDiGetClassDevs(guidDev, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if(devInfo == INVALID_HANDLE_VALUE) {
+        qCritical("SetupDiGetClassDevs failed. Error code: %ld", GetLastError());
+        return;
     }
 
-    //static
-    void QextSerialEnumerator::setupAPIScan(QList<QextPortInfo> & infoList)
-    {
-        HDEVINFO devInfo = INVALID_HANDLE_VALUE;
-        GUID * guidDev = (GUID *) & GUID_CLASS_COMPORT;
+    //enumerate the devices
+    bool ok = true;
+    SP_DEVICE_INTERFACE_DATA ifcData;
+    ifcData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+    SP_DEVICE_INTERFACE_DETAIL_DATA * detData = NULL;
+    DWORD detDataSize = 0;
+    DWORD oldDetDataSize = 0;
 
-        devInfo = SetupDiGetClassDevs(guidDev, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-        if(devInfo == INVALID_HANDLE_VALUE) {
-            qCritical("SetupDiGetClassDevs failed. Error code: %ld", GetLastError());
-            return;
-        }
-
-        //enumerate the devices
-        bool ok = true;
-        SP_DEVICE_INTERFACE_DATA ifcData;
-        ifcData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-        SP_DEVICE_INTERFACE_DETAIL_DATA * detData = NULL;
-        DWORD detDataSize = 0;
-        DWORD oldDetDataSize = 0;
-
-        for (DWORD i = 0; ok; i++) {
-            ok = SetupDiEnumDeviceInterfaces(devInfo, NULL, guidDev, i, &ifcData);
-            if (ok) {
-                SP_DEVINFO_DATA devData = {sizeof(SP_DEVINFO_DATA)};
-                //check for required detData size
-                SetupDiGetDeviceInterfaceDetail(devInfo, & ifcData, NULL, 0, & detDataSize, & devData);
-                //if larger than old detData size then reallocate the buffer
-                if (detDataSize > oldDetDataSize) {
-                    delete [] detData;
-                    detData = (SP_DEVICE_INTERFACE_DETAIL_DATA *) new char[detDataSize];
-                    detData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
-                    oldDetDataSize = detDataSize;
-                }
-                //check the details
-                if (SetupDiGetDeviceInterfaceDetail(devInfo, & ifcData, detData, detDataSize,
-                                                    NULL, & devData)) {
-                    // Got a device. Get the details.
-                    QextPortInfo info;
-                    info.friendName = getDeviceProperty(devInfo, & devData, SPDRP_FRIENDLYNAME);
-                    info.physName = getDeviceProperty(devInfo, & devData, SPDRP_PHYSICAL_DEVICE_OBJECT_NAME);
-                    info.enumName = getDeviceProperty(devInfo, & devData, SPDRP_ENUMERATOR_NAME);
-                    //anyway, to get the port name we must still open registry directly :( ???
-                    //Eh...
-                    HKEY devKey = SetupDiOpenDevRegKey(devInfo, & devData, DICS_FLAG_GLOBAL, 0,
-                                                        DIREG_DEV, KEY_READ);
-                    info.portName = getRegKeyValue(devKey, TEXT("PortName"));
-                    RegCloseKey(devKey);
-                    infoList.append(info);
-                } else {
-                    qCritical("SetupDiGetDeviceInterfaceDetail failed. Error code: %ld", GetLastError());
-                    delete [] detData;
-                    return;
-                }
+    for (DWORD i = 0; ok; i++) {
+        ok = SetupDiEnumDeviceInterfaces(devInfo, NULL, guidDev, i, &ifcData);
+        if (ok) {
+            SP_DEVINFO_DATA devData = {sizeof(SP_DEVINFO_DATA)};
+            //check for required detData size
+            SetupDiGetDeviceInterfaceDetail(devInfo, & ifcData, NULL, 0, & detDataSize, & devData);
+            //if larger than old detData size then reallocate the buffer
+            if (detDataSize > oldDetDataSize) {
+                delete [] detData;
+                detData = (SP_DEVICE_INTERFACE_DETAIL_DATA *) new char[detDataSize];
+                detData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+                oldDetDataSize = detDataSize;
+            }
+            //check the details
+            if (SetupDiGetDeviceInterfaceDetail(devInfo, & ifcData, detData, detDataSize,
+                                                NULL, & devData)) {
+                // Got a device. Get the details.
+                QextPortInfo info;
+                info.friendName = getDeviceProperty(devInfo, & devData, SPDRP_FRIENDLYNAME);
+                info.physName = getDeviceProperty(devInfo, & devData, SPDRP_PHYSICAL_DEVICE_OBJECT_NAME);
+                info.enumName = getDeviceProperty(devInfo, & devData, SPDRP_ENUMERATOR_NAME);
+                //anyway, to get the port name we must still open registry directly :( ???
+                //Eh...
+                HKEY devKey = SetupDiOpenDevRegKey(devInfo, & devData, DICS_FLAG_GLOBAL, 0,
+                                                   DIREG_DEV, KEY_READ);
+                info.portName = getRegKeyValue(devKey, TEXT("PortName"));
+                RegCloseKey(devKey);
+                infoList.append(info);
             } else {
-                if (GetLastError() != ERROR_NO_MORE_ITEMS) {
-                    delete [] detData;
-                    qCritical("SetupDiEnumDeviceInterfaces failed. Error code: %ld", GetLastError());
-                    return;
-                }
+                qCritical("SetupDiGetDeviceInterfaceDetail failed. Error code: %ld", GetLastError());
+                delete [] detData;
+                return;
+            }
+        } else {
+            if (GetLastError() != ERROR_NO_MORE_ITEMS) {
+                delete [] detData;
+                qCritical("SetupDiEnumDeviceInterfaces failed. Error code: %ld", GetLastError());
+                return;
             }
         }
-        delete [] detData;
     }
+    delete [] detData;
+}
 
 #endif /*_TTY_WIN_*/
 
@@ -810,26 +865,26 @@ QList<QextPortInfo> QextSerialEnumerator::getPorts()
 {
     QList<QextPortInfo> ports;
 
-    #ifdef _TTY_WIN_
-        OSVERSIONINFO vi;
-        vi.dwOSVersionInfoSize = sizeof(vi);
-        if (!::GetVersionEx(&vi)) {
-            qCritical("Could not get OS version.");
-            return ports;
-        }
-        // Handle windows 9x and NT4 specially
-        if (vi.dwMajorVersion < 5) {
-            qCritical("Enumeration for this version of Windows is not implemented yet");
-/*			if (vi.dwPlatformId == VER_PLATFORM_WIN32_NT)
+#ifdef _TTY_WIN_
+    OSVERSIONINFO vi;
+    vi.dwOSVersionInfoSize = sizeof(vi);
+    if (!::GetVersionEx(&vi)) {
+        qCritical("Could not get OS version.");
+        return ports;
+    }
+    // Handle windows 9x and NT4 specially
+    if (vi.dwMajorVersion < 5) {
+        qCritical("Enumeration for this version of Windows is not implemented yet");
+        /*			if (vi.dwPlatformId == VER_PLATFORM_WIN32_NT)
                 EnumPortsWNt4(ports);
             else
                 EnumPortsW9x(ports);*/
-        } else	//w2k or later
-            setupAPIScan(ports);
-    #endif /*_TTY_WIN_*/
-    #ifdef _TTY_POSIX_
-        qCritical("Enumeration for POSIX systems is not implemented yet.");
-    #endif /*_TTY_POSIX_*/
+    } else	//w2k or later
+        setupAPIScan(ports);
+#endif /*_TTY_WIN_*/
+#ifdef _TTY_POSIX_
+    qCritical("Enumeration for POSIX systems is not implemented yet.");
+#endif /*_TTY_POSIX_*/
 
     return ports;
 }
@@ -874,7 +929,7 @@ QList<QextPortInfo> QextSerialEnumerator::getPorts()
 Default constructor.
 */
 QextSerialBase::QextSerialBase()
- : QIODevice()
+    : QIODevice()
 {
 
 #ifdef _TTY_WIN_
@@ -907,7 +962,7 @@ QextSerialBase::QextSerialBase()
 Construct a port and assign it to the device specified by the name parameter.
 */
 QextSerialBase::QextSerialBase(const QString & name)
- : QIODevice()
+    : QIODevice()
 {
     setPortName(name);
     construct();
@@ -1328,7 +1383,7 @@ bool Win_QextSerialPort::open(OpenMode mode) {
     if (!isOpen()) {
         /*open the port*/
         Win_Handle=CreateFileA(port.toLatin1(), GENERIC_READ|GENERIC_WRITE,
-                              FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
+                               FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, dwFlagsAndAttributes, NULL);
         if (Win_Handle!=INVALID_HANDLE_VALUE) {
             /*configure port settings*/
             GetCommConfig(Win_Handle, &Win_CommConfig, &confSize);
@@ -1594,31 +1649,31 @@ void Win_QextSerialPort::setFlowControl(FlowType flow) {
     if (isOpen()) {
         switch(flow) {
 
-            /*no flow control*/
-            case FLOW_OFF:
-                Win_CommConfig.dcb.fOutxCtsFlow=FALSE;
-                Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_DISABLE;
-                Win_CommConfig.dcb.fInX=FALSE;
-                Win_CommConfig.dcb.fOutX=FALSE;
-                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                break;
+        /*no flow control*/
+        case FLOW_OFF:
+            Win_CommConfig.dcb.fOutxCtsFlow=FALSE;
+            Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_DISABLE;
+            Win_CommConfig.dcb.fInX=FALSE;
+            Win_CommConfig.dcb.fOutX=FALSE;
+            SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            break;
 
             /*software (XON/XOFF) flow control*/
-            case FLOW_XONXOFF:
-                Win_CommConfig.dcb.fOutxCtsFlow=FALSE;
-                Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_DISABLE;
-                Win_CommConfig.dcb.fInX=TRUE;
-                Win_CommConfig.dcb.fOutX=TRUE;
-                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                break;
+        case FLOW_XONXOFF:
+            Win_CommConfig.dcb.fOutxCtsFlow=FALSE;
+            Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_DISABLE;
+            Win_CommConfig.dcb.fInX=TRUE;
+            Win_CommConfig.dcb.fOutX=TRUE;
+            SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            break;
 
-            case FLOW_HARDWARE:
-                Win_CommConfig.dcb.fOutxCtsFlow=TRUE;
-                Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_HANDSHAKE;
-                Win_CommConfig.dcb.fInX=FALSE;
-                Win_CommConfig.dcb.fOutX=FALSE;
-                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                break;
+        case FLOW_HARDWARE:
+            Win_CommConfig.dcb.fOutxCtsFlow=TRUE;
+            Win_CommConfig.dcb.fRtsControl=RTS_CONTROL_HANDSHAKE;
+            Win_CommConfig.dcb.fInX=FALSE;
+            Win_CommConfig.dcb.fOutX=FALSE;
+            SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            break;
         }
     }
     UNLOCK_MUTEX();
@@ -1644,34 +1699,34 @@ void Win_QextSerialPort::setParity(ParityType parity) {
         Win_CommConfig.dcb.Parity=(unsigned char)parity;
         switch (parity) {
 
-            /*space parity*/
-            case PAR_SPACE:
-                if (Settings.DataBits==DATA_8) {
-                    TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: Space parity with 8 data bits is not supported by POSIX systems.");
-                }
-                Win_CommConfig.dcb.fParity=TRUE;
-                break;
+        /*space parity*/
+        case PAR_SPACE:
+            if (Settings.DataBits==DATA_8) {
+                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: Space parity with 8 data bits is not supported by POSIX systems.");
+            }
+            Win_CommConfig.dcb.fParity=TRUE;
+            break;
 
             /*mark parity - WINDOWS ONLY*/
-            case PAR_MARK:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning:  Mark parity is not supported by POSIX systems");
-                Win_CommConfig.dcb.fParity=TRUE;
-                break;
+        case PAR_MARK:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning:  Mark parity is not supported by POSIX systems");
+            Win_CommConfig.dcb.fParity=TRUE;
+            break;
 
             /*no parity*/
-            case PAR_NONE:
-                Win_CommConfig.dcb.fParity=FALSE;
-                break;
+        case PAR_NONE:
+            Win_CommConfig.dcb.fParity=FALSE;
+            break;
 
             /*even parity*/
-            case PAR_EVEN:
-                Win_CommConfig.dcb.fParity=TRUE;
-                break;
+        case PAR_EVEN:
+            Win_CommConfig.dcb.fParity=TRUE;
+            break;
 
             /*odd parity*/
-            case PAR_ODD:
-                Win_CommConfig.dcb.fParity=TRUE;
-                break;
+        case PAR_ODD:
+            Win_CommConfig.dcb.fParity=TRUE;
+            break;
         }
         SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
     }
@@ -1702,7 +1757,7 @@ void Win_QextSerialPort::setDataBits(DataBitsType dataBits) {
     LOCK_MUTEX();
     if (Settings.DataBits!=dataBits) {
         if ((Settings.StopBits==STOP_2 && dataBits==DATA_5) ||
-            (Settings.StopBits==STOP_1_5 && dataBits!=DATA_5)) {
+                (Settings.StopBits==STOP_1_5 && dataBits!=DATA_5)) {
         }
         else {
             Settings.DataBits=dataBits;
@@ -1711,49 +1766,49 @@ void Win_QextSerialPort::setDataBits(DataBitsType dataBits) {
     if (isOpen()) {
         switch(dataBits) {
 
-            /*5 data bits*/
-            case DATA_5:
-                if (Settings.StopBits==STOP_2) {
-                    TTY_WARNING("Win_QextSerialPort: 5 Data bits cannot be used with 2 stop bits.");
-                }
-                else {
-                    Win_CommConfig.dcb.ByteSize=5;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        /*5 data bits*/
+        case DATA_5:
+            if (Settings.StopBits==STOP_2) {
+                TTY_WARNING("Win_QextSerialPort: 5 Data bits cannot be used with 2 stop bits.");
+            }
+            else {
+                Win_CommConfig.dcb.ByteSize=5;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
 
             /*6 data bits*/
-            case DATA_6:
-                if (Settings.StopBits==STOP_1_5) {
-                    TTY_WARNING("Win_QextSerialPort: 6 Data bits cannot be used with 1.5 stop bits.");
-                }
-                else {
-                    Win_CommConfig.dcb.ByteSize=6;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        case DATA_6:
+            if (Settings.StopBits==STOP_1_5) {
+                TTY_WARNING("Win_QextSerialPort: 6 Data bits cannot be used with 1.5 stop bits.");
+            }
+            else {
+                Win_CommConfig.dcb.ByteSize=6;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
 
             /*7 data bits*/
-            case DATA_7:
-                if (Settings.StopBits==STOP_1_5) {
-                    TTY_WARNING("Win_QextSerialPort: 7 Data bits cannot be used with 1.5 stop bits.");
-                }
-                else {
-                    Win_CommConfig.dcb.ByteSize=7;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        case DATA_7:
+            if (Settings.StopBits==STOP_1_5) {
+                TTY_WARNING("Win_QextSerialPort: 7 Data bits cannot be used with 1.5 stop bits.");
+            }
+            else {
+                Win_CommConfig.dcb.ByteSize=7;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
 
             /*8 data bits*/
-            case DATA_8:
-                if (Settings.StopBits==STOP_1_5) {
-                    TTY_WARNING("Win_QextSerialPort: 8 Data bits cannot be used with 1.5 stop bits.");
-                }
-                else {
-                    Win_CommConfig.dcb.ByteSize=8;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        case DATA_8:
+            if (Settings.StopBits==STOP_1_5) {
+                TTY_WARNING("Win_QextSerialPort: 8 Data bits cannot be used with 1.5 stop bits.");
+            }
+            else {
+                Win_CommConfig.dcb.ByteSize=8;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
         }
     }
     UNLOCK_MUTEX();
@@ -1781,7 +1836,7 @@ void Win_QextSerialPort::setStopBits(StopBitsType stopBits) {
     LOCK_MUTEX();
     if (Settings.StopBits!=stopBits) {
         if ((Settings.DataBits==DATA_5 && stopBits==STOP_2) ||
-            (stopBits==STOP_1_5 && Settings.DataBits!=DATA_5)) {
+                (stopBits==STOP_1_5 && Settings.DataBits!=DATA_5)) {
         }
         else {
             Settings.StopBits=stopBits;
@@ -1790,34 +1845,34 @@ void Win_QextSerialPort::setStopBits(StopBitsType stopBits) {
     if (isOpen()) {
         switch (stopBits) {
 
-            /*one stop bit*/
-            case STOP_1:
-                Win_CommConfig.dcb.StopBits=ONESTOPBIT;
-                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                break;
+        /*one stop bit*/
+        case STOP_1:
+            Win_CommConfig.dcb.StopBits=ONESTOPBIT;
+            SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            break;
 
             /*1.5 stop bits*/
-            case STOP_1_5:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: 1.5 stop bit operation is not supported by POSIX.");
-                if (Settings.DataBits!=DATA_5) {
-                    TTY_WARNING("Win_QextSerialPort: 1.5 stop bits can only be used with 5 data bits");
-                }
-                else {
-                    Win_CommConfig.dcb.StopBits=ONE5STOPBITS;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        case STOP_1_5:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: 1.5 stop bit operation is not supported by POSIX.");
+            if (Settings.DataBits!=DATA_5) {
+                TTY_WARNING("Win_QextSerialPort: 1.5 stop bits can only be used with 5 data bits");
+            }
+            else {
+                Win_CommConfig.dcb.StopBits=ONE5STOPBITS;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
 
             /*two stop bits*/
-            case STOP_2:
-                if (Settings.DataBits==DATA_5) {
-                    TTY_WARNING("Win_QextSerialPort: 2 stop bits cannot be used with 5 data bits");
-                }
-                else {
-                    Win_CommConfig.dcb.StopBits=TWOSTOPBITS;
-                    SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
-                }
-                break;
+        case STOP_2:
+            if (Settings.DataBits==DATA_5) {
+                TTY_WARNING("Win_QextSerialPort: 2 stop bits cannot be used with 5 data bits");
+            }
+            else {
+                Win_CommConfig.dcb.StopBits=TWOSTOPBITS;
+                SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
+            }
+            break;
         }
     }
     UNLOCK_MUTEX();
@@ -1861,150 +1916,150 @@ void Win_QextSerialPort::setBaudRate(BaudRateType baudRate) {
     LOCK_MUTEX();
     if (Settings.BaudRate!=baudRate) {
         switch (baudRate) {
-            case BAUD50:
-            case BAUD75:
-            case BAUD134:
-            case BAUD150:
-            case BAUD200:
-                Settings.BaudRate=BAUD110;
-                break;
+        case BAUD50:
+        case BAUD75:
+        case BAUD134:
+        case BAUD150:
+        case BAUD200:
+            Settings.BaudRate=BAUD110;
+            break;
 
-            case BAUD1800:
-                Settings.BaudRate=BAUD1200;
-                break;
+        case BAUD1800:
+            Settings.BaudRate=BAUD1200;
+            break;
 
-            case BAUD76800:
-                Settings.BaudRate=BAUD57600;
-                break;
+        case BAUD76800:
+            Settings.BaudRate=BAUD57600;
+            break;
 
-            default:
-                Settings.BaudRate=baudRate;
-                break;
+        default:
+            Settings.BaudRate=baudRate;
+            break;
         }
     }
     if (isOpen()) {
         switch (baudRate) {
 
-            /*50 baud*/
-            case BAUD50:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 50 baud operation.  Switching to 110 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        /*50 baud*/
+        case BAUD50:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 50 baud operation.  Switching to 110 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*75 baud*/
-            case BAUD75:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 75 baud operation.  Switching to 110 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        case BAUD75:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 75 baud operation.  Switching to 110 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*110 baud*/
-            case BAUD110:
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        case BAUD110:
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*134.5 baud*/
-            case BAUD134:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 134.5 baud operation.  Switching to 110 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        case BAUD134:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 134.5 baud operation.  Switching to 110 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*150 baud*/
-            case BAUD150:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 150 baud operation.  Switching to 110 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        case BAUD150:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 150 baud operation.  Switching to 110 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*200 baud*/
-            case BAUD200:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 200 baud operation.  Switching to 110 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_110;
-                break;
+        case BAUD200:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 200 baud operation.  Switching to 110 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_110;
+            break;
 
             /*300 baud*/
-            case BAUD300:
-                Win_CommConfig.dcb.BaudRate=CBR_300;
-                break;
+        case BAUD300:
+            Win_CommConfig.dcb.BaudRate=CBR_300;
+            break;
 
             /*600 baud*/
-            case BAUD600:
-                Win_CommConfig.dcb.BaudRate=CBR_600;
-                break;
+        case BAUD600:
+            Win_CommConfig.dcb.BaudRate=CBR_600;
+            break;
 
             /*1200 baud*/
-            case BAUD1200:
-                Win_CommConfig.dcb.BaudRate=CBR_1200;
-                break;
+        case BAUD1200:
+            Win_CommConfig.dcb.BaudRate=CBR_1200;
+            break;
 
             /*1800 baud*/
-            case BAUD1800:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 1800 baud operation.  Switching to 1200 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_1200;
-                break;
+        case BAUD1800:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 1800 baud operation.  Switching to 1200 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_1200;
+            break;
 
             /*2400 baud*/
-            case BAUD2400:
-                Win_CommConfig.dcb.BaudRate=CBR_2400;
-                break;
+        case BAUD2400:
+            Win_CommConfig.dcb.BaudRate=CBR_2400;
+            break;
 
             /*4800 baud*/
-            case BAUD4800:
-                Win_CommConfig.dcb.BaudRate=CBR_4800;
-                break;
+        case BAUD4800:
+            Win_CommConfig.dcb.BaudRate=CBR_4800;
+            break;
 
             /*9600 baud*/
-            case BAUD9600:
-                Win_CommConfig.dcb.BaudRate=CBR_9600;
-                break;
+        case BAUD9600:
+            Win_CommConfig.dcb.BaudRate=CBR_9600;
+            break;
 
             /*14400 baud*/
-            case BAUD14400:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 14400 baud operation.");
-                Win_CommConfig.dcb.BaudRate=CBR_14400;
-                break;
+        case BAUD14400:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 14400 baud operation.");
+            Win_CommConfig.dcb.BaudRate=CBR_14400;
+            break;
 
             /*19200 baud*/
-            case BAUD19200:
-                Win_CommConfig.dcb.BaudRate=CBR_19200;
-                break;
+        case BAUD19200:
+            Win_CommConfig.dcb.BaudRate=CBR_19200;
+            break;
 
             /*38400 baud*/
-            case BAUD38400:
-                Win_CommConfig.dcb.BaudRate=CBR_38400;
-                break;
+        case BAUD38400:
+            Win_CommConfig.dcb.BaudRate=CBR_38400;
+            break;
 
             /*56000 baud*/
-            case BAUD56000:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 56000 baud operation.");
-                Win_CommConfig.dcb.BaudRate=CBR_56000;
-                break;
+        case BAUD56000:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 56000 baud operation.");
+            Win_CommConfig.dcb.BaudRate=CBR_56000;
+            break;
 
             /*57600 baud*/
-            case BAUD57600:
-                Win_CommConfig.dcb.BaudRate=CBR_57600;
-                break;
+        case BAUD57600:
+            Win_CommConfig.dcb.BaudRate=CBR_57600;
+            break;
 
             /*76800 baud*/
-            case BAUD76800:
-                TTY_WARNING("Win_QextSerialPort: Windows does not support 76800 baud operation.  Switching to 57600 baud.");
-                Win_CommConfig.dcb.BaudRate=CBR_57600;
-                break;
+        case BAUD76800:
+            TTY_WARNING("Win_QextSerialPort: Windows does not support 76800 baud operation.  Switching to 57600 baud.");
+            Win_CommConfig.dcb.BaudRate=CBR_57600;
+            break;
 
             /*115200 baud*/
-            case BAUD115200:
-                Win_CommConfig.dcb.BaudRate=CBR_115200;
-                break;
+        case BAUD115200:
+            Win_CommConfig.dcb.BaudRate=CBR_115200;
+            break;
 
             /*128000 baud*/
-            case BAUD128000:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 128000 baud operation.");
-                Win_CommConfig.dcb.BaudRate=CBR_128000;
-                break;
+        case BAUD128000:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 128000 baud operation.");
+            Win_CommConfig.dcb.BaudRate=CBR_128000;
+            break;
 
             /*256000 baud*/
-            case BAUD256000:
-                TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 256000 baud operation.");
-                Win_CommConfig.dcb.BaudRate=CBR_256000;
-                break;
+        case BAUD256000:
+            TTY_PORTABILITY_WARNING("Win_QextSerialPort Portability Warning: POSIX does not support 256000 baud operation.");
+            Win_CommConfig.dcb.BaudRate=CBR_256000;
+            break;
         }
         SetCommConfig(Win_Handle, &Win_CommConfig, sizeof(COMMCONFIG));
     }
@@ -2204,3 +2259,45 @@ void Win_QextSerialThread::run()
 
 
 
+
+void MQSerial::on_checkBox_11_clicked()
+{
+    if(ui->checkBox_11->isChecked())
+    {
+        QByteArray hex_string=ui->textBrowser->toPlainText().toLatin1().toHex();
+
+        long size=hex_string.size();
+        for(long i=0;i<size;i++)
+            hex_string.insert(3*i," ");
+        ui->textBrowser->clear();
+        ui->textBrowser->insertPlainText(hex_string);
+    }
+    else
+    {
+
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//void MQSerial::on_comboBox_activated(const QString &arg1)
+//{
+
+//}
